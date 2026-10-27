@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+    <script src="https://cloudflare.com"></script>
+</head>
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 1. RETTANGOLO DI GIOCO IN VERTICALE
+        const fieldGeometry = new THREE.PlaneGeometry(30, 50); // Orientamento verticale
+        const fieldMaterial = new THREE.MeshStandardMaterial({ color: 0x1e5a22 });
+        const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+        field.rotation.x = -Math.PI / 2;
+        scene.add(field);
+
+        // (Sub-mesh per linee bianche, aree di rigore, porte con reti, panchine e spalti del pubblico con guardalinee e arbitro)
+
+        // 2. GIOCATORI (11 Inter neroazzurri, 11 Catanzaro giallorossi)
+        const interMat = new THREE.MeshStandardMaterial({ color: 0x0033a0 });
+        const catanzaroMat = new THREE.MeshStandardMaterial({ color: 0xdc052d });
+        for(let i=0; i<22; i++) {
+            const player = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.9), i < 11 ? interMat : catanzaroMat);
+            player.position.set((Math.random() - 0.5) * 24, 0.45, (Math.random() - 0.5) * 44);
+            scene.add(player);
+        }
+
+        // 3. DRONE E DISCESA PALLONE AL CENTRO
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        const drone = new THREE.Group();
+        drone.position.set(0, 16, 0); ball.position.set(0, 15.6, 0);
+        scene.add(drone); scene.add(ball);
+
+        // 4. EMISSIONE FUMOGENI REALI DALLE DUE CURVE
+        const smokeParticles = [];
+        const smokeColors = [0x0033a0, 0x000000, 0xffcc00, 0xdc052d]; // Neroazzurro e Giallorosso
+        function createSmoke() {
+            const p = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), new THREE.MeshBasicMaterial({ 
+                color: smokeColors[Math.floor(Math.random() * smokeColors.length)], transparent: true, opacity: 0.55 
+            }));
+            p.position.set((Math.random() - 0.5) * 28, 0.5, Math.random() > 0.5 ? 24 : -24);
+            scene.add(p); smokeParticles.push(p);
+        }
+
+        // 5. SCRITTA ESTROSA IN GRASSETTO NEROAZZURRO
+        const lines = ["FEDERICO", "BUONA VISIONE", "DA", "NINO#FILIPPO"];
+        const letterMeshes = [];
+        const semiCircleRadius = 5.5;
+        let totalLetters = 0;
+        lines.forEach(l => totalLetters += l.replace(/\s/g, '').length);
+        let letterIndex = 0;
+
+        lines.forEach((line, rowIndex) => {
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i]; if (char === " ") continue;
+                const canvas = document.createElement('canvas');
+                canvas.width = 128; canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                
+                const gradient = ctx.createLinearGradient(0, 0, 128, 0);
+                gradient.addColorStop(0, "#000000"); gradient.addColorStop(0.5, "#0033a0"); gradient.addColorStop(1, "#0033a0"); // Sfumatura Neroazzurra
+                
+                ctx.font = "bold 90px 'Impact', sans-serif";
+                ctx.fillStyle = gradient; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                ctx.fillText(char, 64, 64);
+                
+                const letter = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, side: THREE.DoubleSide }));
+                letter.position.set((Math.random() - 0.5) * 40, Math.random() * 20 + 12, (Math.random() - 0.5) * 40);
+                letter.userData = { rotX: (Math.random() - 0.5) * 0.25, rotY: (Math.random() - 0.5) * 0.25 };
+
+                const currentAngle = Math.PI * 0.15 + (letterIndex / (totalLetters - 1)) * (Math.PI * 0.7);
+                letter.userData.targetX = Math.cos(currentAngle) * semiCircleRadius;
+                letter.userData.targetY = 2.5 + ((lines.length - rowIndex) * 1.4);
+                letter.userData.targetZ = Math.sin(currentAngle) * (semiCircleRadius * 0.4);
+                
+                scene.add(letter); letterMeshes.push(letter);
+                letterIndex++;
+            }
+        });
+
+        scene.add(new THREE.AmbientLight(0x707070));
+        camera.position.set(0, 16, 24); camera.lookAt(0, 4, 0);
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            if (drone.position.y > 4.5) { drone.position.y -= 0.03; ball.position.y -= 0.03; }
+            else if (ball.position.y > 0.18) { ball.position.y -= 0.015; }
+
+            if (smokeParticles.length < 250 && Math.random() < 0.4) createSmoke();
+            for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                const p = smokeParticles[i];
+                p.position.x += (0 - p.position.x) * 0.007; p.position.z += (0 - p.position.z) * 0.007; p.position.y += 0.025;
+                p.material.opacity -= 0.004; if (p.material.opacity <= 0) { scene.remove(p); smokeParticles.splice(i, 1); }
+            }
+
+            letterMeshes.forEach((letter) => {
+                letter.position.x += (letter.userData.targetX - letter.position.x) * 0.014;
+                letter.position.y += (letter.userData.targetY - letter.position.y) * 0.014;
+                letter.position.z += (letter.userData.targetZ - letter.position.z) * 0.014;
+                if (time < 11) {
+                    letter.rotation.x += letter.userData.rotX;
+                    letter.rotation.y += letter.userData.rotY;
+                } else {
+                    letter.lookAt(camera.position);
+                }
+            });
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
+
